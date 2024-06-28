@@ -25,15 +25,19 @@ pipeline {
             }
         }
 
-        stage("Build and start test image") {
+        stage("Build and Start Test Image") {
             steps {
-                sh "docker-composer build"
+                script {
+                    echo "Docker Registry Username: ${REGISTRY_AUTH_USR}"
+                    echo "Docker Registry Password: ${REGISTRY_AUTH_PSW}"
+                }
+                sh "docker-compose build"
                 sh "docker-compose up -d"
-                waitUntilServicesReady
+                waitUntilServicesReady()
             }
         }
 
-        stage("Run tests") {
+        stage("Run Tests") {
             steps {
                 sh "docker-compose exec -T php-fpm composer --no-ansi --no-interaction tests-ci"
                 sh "docker-compose exec -T php-fpm composer --no-ansi --no-interaction behat-ci"
@@ -43,15 +47,15 @@ pipeline {
                 always {
                     junit "build/junit/*.xml"
                     step([
-                            $class              : "CloverPublisher",
-                            cloverReportDir     : "build/coverage",
-                            cloverReportFileName: "clover.xml"
+                        $class: "CloverPublisher",
+                        cloverReportDir: "build/coverage",
+                        cloverReportFileName: "clover.xml"
                     ])
                 }
             }
         }
 
-        stage("Determine new version") {
+        stage("Determine New Version") {
             when {
                 branch "master"
             }
@@ -69,7 +73,7 @@ pipeline {
             }
         }
 
-        stage("Create new version") {
+        stage("Create New Version") {
             when {
                 branch "master"
                 environment name: "IS_NEW_VERSION", value: "YES"
@@ -91,13 +95,13 @@ pipeline {
                     }
                 }
 
-                sh "docker login -u=$REGISTRY_AUTH_USR -p=$REGISTRY_AUTH_PSW ${env.REGISTRY_ADDRESS}"
+                sh "docker login -u=${REGISTRY_AUTH_USR} -p=${REGISTRY_AUTH_PSW} ${env.REGISTRY_ADDRESS}"
                 sh "docker-compose -f ${env.COMPOSE_FILE} build"
                 sh "docker-compose -f ${env.COMPOSE_FILE} push"
             }
         }
 
-        stage("Deploy to production") {
+        stage("Deploy to Production") {
             agent { node { label "swarm-prod" } }
 
             when {
@@ -106,28 +110,28 @@ pipeline {
             }
 
             steps {
-                sh "docker login -u=$REGISTRY_AUTH_USR -p=$REGISTRY_AUTH_PSW ${env.REGISTRY_ADDRESS}"
+                sh "docker login -u=${REGISTRY_AUTH_USR} -p=${REGISTRY_AUTH_PSW} ${env.REGISTRY_ADDRESS}"
                 sh "docker stack deploy ${env.DEPLOY_STACK_NAME} -c ${env.COMPOSE_FILE} --with-registry-auth"
             }
 
             post {
                 success {
                     slackSend(
-                            teamDomain: "${env.SLACK_TEAM_DOMAIN}",
-                            token: "${env.SLACK_TOKEN}",
-                            channel: "${env.SLACK_CHANNEL}",
-                            color: "good",
-                            message: "${env.STACK_PREFIX} production deploy: *${env.DEPLOY_VERSION}*. <${env.DEPLOY_URL}|Access service> - <${env.BUILD_URL}|Check build>"
+                        teamDomain: "${env.SLACK_TEAM_DOMAIN}",
+                        token: "${env.SLACK_TOKEN}",
+                        channel: "${env.SLACK_CHANNEL}",
+                        color: "good",
+                        message: "${env.STACK_PREFIX} production deploy: *${env.DEPLOY_VERSION}*. <${env.DEPLOY_URL}|Access service> - <${env.BUILD_URL}|Check build>"
                     )
                 }
 
                 failure {
                     slackSend(
-                            teamDomain: "${env.SLACK_TEAM_DOMAIN}",
-                            token: "${env.SLACK_TOKEN}",
-                            channel: "${env.SLACK_CHANNEL}",
-                            color: "danger",
-                            message: "${env.STACK_PREFIX} production deploy failed: *${env.DEPLOY_VERSION}*. <${env.BUILD_URL}|Check build>"
+                        teamDomain: "${env.SLACK_TEAM_DOMAIN}",
+                        token: "${env.SLACK_TOKEN}",
+                        channel: "${env.SLACK_CHANNEL}",
+                        color: "danger",
+                        message: "${env.STACK_PREFIX} production deploy failed: *${env.DEPLOY_VERSION}*. <${env.BUILD_URL}|Check build>"
                     )
                 }
             }
